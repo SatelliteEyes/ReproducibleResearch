@@ -1,0 +1,166 @@
+# Reproducible Research  
+## Course Project 1  
+Author: Caitlin Hart  
+Date Started: February 9, 2015  
+Date Submitted: February 15, 2015  
+
+### Where to find the data  
+The dataset, *Activity Monitoring Data* can be downloaded from the Course website:  
+[here](https://class.coursera.org/repdata-011/human_grading/view/courses/973512/assessments/3/submissions)  
+  
+### Initial read-in to variable *activity*:  
+``` {r readin, results = FALSE}
+activity = read.csv("activity.csv")
+```
+
+### Getting a first look at the data:
+``` {r summary1}
+str(activity)
+summary(activity)
+```
+
+Wow, that is a lot of NAs in the steps variable. It would be good to clean it up some.
+
+``` {r firstclean, results = "hide"}
+cleanact <- activity[!is.na(activity$steps),]
+```
+
+``` {r summary2, echo = FALSE}
+str(cleanact)
+summary(cleanact)
+```
+
+So much better!  
+
+### Summing Steps over Days and Creating a Histogram  
+Next, we'd like to know the total number of steps taken per day. Thankfully, date is already a factor variable. I'm going to use the **tapply()**  
+function to get this done. I will also make a histogram using lattice graphics.
+
+``` {r tapply}
+totalday <- tapply(cleanact$steps,list(cleanact$date),sum)
+head(totalday)
+
+## Now we can make a histogram with number of steps per day as bins and the count of days
+## as the frequency variable.
+library(lattice)
+histogram(totalday, main = "Steps per Day", xlab = "Number of Steps", ylab = "Number of Days")
+```
+
+### Reporting out the mean and median
+``` {r meanmedian,echo=FALSE}
+cleantotalday <- totalday[!is.na(totalday)]
+print(paste("Mean Total Steps per Day = ",signif(mean(cleantotalday),digits = 7),sep=""))
+print(paste("Median Total Steps per Day = ",median(cleantotalday),sep = ""))
+```
+
+### Ploting average steps per interval
+We're going to use **tapply()** again, except this time, we'll use interval as the factor and mean as the function. We'll then use **xyplot()** from  
+the lattice package to plot the frequency of steps throughout the day. In order to make the plot look more readable, we're specifying that  
+the x-axis ticks will occur every 120 minutes and will be rotated 90 degrees. This is controled with the *scale* parameter in **xyplot**.  
+To ensure we only edit the x-axis, *x = list(...)* is specified within the *scale* parameter.
+
+``` {r daily}
+totalinterval <- tapply(cleanact$steps,list(cleanact$interval),mean)
+xyplot(totalinterval ~ interval,cleanact,type="l",scale=list(x=list(tick.number = 120, at = seq(0,2355,120),rot=90)),main="Steps By Interval",xlab = "Interval",ylab = "Steps")
+```
+
+### Reporting out the interval with the maximum average steps
+``` {r largeinterval, echo=FALSE}
+unfactored<- as.vector(totalinterval)
+maxindex <- which.max(unfactored)
+intervals <- as.numeric(names(totalinterval))
+maxint <- intervals[maxindex]
+
+float <- maxint/60
+hours <- floor(float)
+mins <- (float-hours)*60
+
+hour <- hours
+half <- "am"
+
+if(hours >= 12) half <-"pm"
+if (hours > 12) hour <- hours - 12
+
+print(paste("Most Active Interval:",maxint,"or",hours,"hours",mins,"minutes","or",hour,":",mins,half,sep=" "))
+```
+
+### Filling In Missing Values
+So, how many missing values are there?
+
+``` {r missing}
+sum(is.na(activity$steps))
+```
+
+Well, that's alot! We'd like to fill those in. How many zero values are there?
+
+``` {r zeros}
+length(which(activity$steps == 0))
+```
+
+Those are going to cause our mean to be lower than it ought to be. First lets remove the zeros so that they don't skew the data low. This  
+probably means the data will be skewed high, but who doesn't want to catch a break with their exercise routine? After removing the zeros,  
+we'll use the mean of all intervals on all days to fill in the NA values. We wont remove the zeros in the full dataset, however, because  
+they *are* data.
+
+``` {r fillin}
+str(activity)
+nozero <- cleanact[cleanact$steps != 0,]
+mean <- mean(nozero$steps)
+
+activity["steps"][is.na(activity["steps"])] <- mean
+str(activity)
+```
+### Any Change? 
+How does this substitution change the histogram, mean and median?
+
+``` {r tapply2}
+totalday <- tapply(activity$steps,list(activity$date),sum)
+head(totalday)
+
+## Remake the histogram with number of steps per day as bins and the count of days as the frequency variable.
+library(lattice)
+histogram(totalday, main = "Steps per Day", xlab = "Number of Steps", ylab = "Number of Days")
+```
+
+### Reporting out the mean and median
+``` {r meanmedian2,echo=FALSE}
+cleantotalday <- totalday[!is.na(totalday)]
+print(paste("Mean Total Steps per Day = ",signif(mean(cleantotalday),digits = 7),sep=""))
+print(paste("Median Total Steps per Day = ",median(cleantotalday),sep = ""))
+```
+Well, that changed quite a bit. We'd better know our datasets really well before trying this on real science! Substituting a number for  
+NA caused the mean value to jump by over 4000 steps! The median value was skewed upwards as well, since the mean value fell in the lower  
+50% of the NA-free dataset. The distribution of the data has changed quite a bit as well, as you can see in the histogram. The strange  
+outlier bin around 40000 is the result of the non-zero mean, which is approximately 134.3, multiplied by the number of intervals in a  
+day, 288. This reveals that there were several days when ALL intervals were missing data.
+
+### More activity on the Weekend or Weekdays?
+We'd like to see whether there is more activity on the Weekends or Weekdays. For this, we need the *date* variable to be of class "date"  
+or POSIXct.
+
+``` {r datept1}
+## date is a factor, so we need to convert it into a character, then into a POSIXlt.
+date <- activity$date
+chardate <- as.character(date)
+POSdate <- format(as.POSIXlt(chardate),format="%Y-%m-%d")
+
+## When we bind POSdate to cleanact, it becomes a factor, so we need to convert it to a POSIXlt
+dateact <- cbind(activity,POSdate)
+dateact$POSdate <- as.POSIXlt(dateact$POSdate)
+
+## Now we can figure out the days of the week and add those to the data.frame
+week <- weekdays(dateact$POSdate)
+dateact <- cbind(dateact,week)
+
+str(dateact)
+```
+
+For simplicity, we're going to split dateact into two data.frame. Weekend and Weekday.
+
+``` {r split}
+Weekend <- dateact[dateact$week == "Sunday" | dateact$week == "Saturday",]
+Weekday <- dateact[dateact$week != "Sunday" & dateact$week != "Saturday",]
+```
+
+At this point, I am out of time. I need the last 15 minute to confirm the submission.
+
